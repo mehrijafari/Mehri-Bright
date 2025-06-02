@@ -1,0 +1,118 @@
+﻿@using frontend.Interfaces
+@using frontend.Models
+@inject ICustomerService CustomerService
+@inject ICategoryService CategoryService
+@inject IProductService ProductService
+
+<MudDialog Style="width: 600px;">
+	<TitleContent>Add new product</TitleContent>
+	<DialogContent>
+		@if (!string.IsNullOrEmpty(_message))
+		{
+			<MudAlert Severity="Severity.Error" Class="mt-2">
+				@foreach (var line in _message.Split('\n'))
+				{
+					<div>@line</div>
+				}
+			</MudAlert>
+		}
+		<MudTextField ShrinkLabel @bind-Value="ProductToCreate.ProductName" Label="Product name" Variant="Variant.Text" Counter="50" MaxLength="50" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="ProductToCreate.ProductDescription" Label="Description" Variant="Variant.Text" Counter="200" MaxLength="200" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="ProductToCreate.Price" Label="Price" Variant="Variant.Text" Immediate="true"></MudTextField>
+		<MudSelect @bind-Value="ProductToCreate.CategoryId">
+			@foreach (var category in Categories)
+			{
+				<MudSelectItem Value="@category.Id">@category.CategoryName</MudSelectItem>
+			}
+		</MudSelect>
+		<MudRadioGroup @bind-Value="ProductToCreate.InStock">
+			<MudRadio Value="false" Color="Color.Success" UncheckedColor="Color.Error">No</MudRadio>
+			<MudRadio Value="true" Color="Color.Success" UncheckedColor="Color.Error">Yes</MudRadio>
+		</MudRadioGroup>
+	</DialogContent>
+	<DialogActions>
+		<MudButton OnClick="Cancel">Cancel</MudButton>
+		<MudButton OnClick="SaveNewProduct">Add product</MudButton>
+	</DialogActions>
+</MudDialog>
+
+
+
+
+
+@code {
+	[CascadingParameter]
+	private IMudDialogInstance MudDialog { get; set; }
+
+	public ProductToCreate ProductToCreate { get; set; } = new ProductToCreate();
+
+	public List<Category> Categories { get; set; } = new List<Category>();
+
+	private string _message;
+
+	protected override async Task OnInitializedAsync()
+	{
+		Categories = await CategoryService.GetAllCategoriesAsync();
+	}
+
+	private async Task SaveNewProduct()
+	{
+
+		var result = await ProductService.CreateNewProductAsync(ProductToCreate);
+		if (result.success)
+		{
+			MudDialog.Close(DialogResult.Ok(result.newProduct));
+		}
+		else
+		{
+			// Parse the error message if it's in JSON format
+			try
+			{
+				if (result.errorMessage.StartsWith("{") && result.errorMessage.Contains("errors"))
+				{
+					// Parse the JSON error response
+					var errorJson = System.Text.Json.JsonDocument.Parse(result.errorMessage);
+
+					if (errorJson.RootElement.TryGetProperty("errors", out var errorsElement))
+					{
+						// Build a readable error message
+						var errorMessages = new List<string>();
+
+						foreach (var errorProp in errorsElement.EnumerateObject())
+						{
+							string fieldName = errorProp.Name;
+							var errorArray = errorProp.Value.EnumerateArray();
+
+							// Add each error message
+							foreach (var error in errorArray)
+							{
+								errorMessages.Add(error.GetString());
+							}
+						}
+
+						// Join all error messages with line breaks
+						_message = string.Join("\n", errorMessages);
+					}
+					else
+					{
+						_message = result.errorMessage;
+					}
+				}
+				else
+				{
+					_message = result.errorMessage;
+				}
+			}
+			catch
+			{
+				// If parsing fails, use the original message
+				_message = result.errorMessage;
+			}
+
+			StateHasChanged();
+		}
+
+	}
+
+	private void Cancel() => MudDialog.Cancel();
+}

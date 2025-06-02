@@ -1,0 +1,543 @@
+﻿@page "/products"
+@using frontend.Interfaces
+@using frontend.Models;
+@inject IProductService ProductService
+@inject IDialogService DialogService
+@inject ICategoryService CategoryService
+@inject ICustomerService CustomerService
+@inject IOrderService OrderService
+@inject ISnackbar Snackbar
+
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+	<MudAlert Severity="Severity.Error" Class="my-2" Dense="true">@_errorMessage</MudAlert>
+}
+@if (!string.IsNullOrEmpty(_successMessage))
+{
+	<MudAlert Severity="Severity.Success" Class="my-2" Dense="true">@_successMessage</MudAlert>
+}
+
+<MudExpansionPanels Style="flex: 1;">
+	<MudExpansionPanel Text="Selected Product Details:">
+		@if (_selectedProduct != null)
+		{
+			<MudTextField ShrinkLabel @bind-Value="_selectedProduct.ProductName" Label="Product name" Variant="Variant.Text" Counter="50" MaxLength="50" Immediate="true" Disabled="@_isDetailsDisabled"></MudTextField>
+			<MudTextField ShrinkLabel @bind-Value="_selectedProduct.ProductDescription" Label="Description" Variant="Variant.Text" Counter="200" MaxLength="200" Immediate="true" Disabled="@_isDetailsDisabled"></MudTextField>
+			<MudTextField ShrinkLabel @bind-Value="_selectedProduct.Price" Label="Price" Variant="Variant.Text" Immediate="true" Disabled="@_isDetailsDisabled"></MudTextField>
+			<MudSelect @bind-Value="_selectedProduct.CategoryId" Disabled="@_isDetailsDisabled">
+				@foreach (var category in Categories)
+				{
+					<MudSelectItem Value="@category.Id">@category.CategoryName</MudSelectItem>
+				}
+			</MudSelect>
+			<MudRadioGroup @bind-Value="_selectedProduct.InStock" Disabled="@_isDetailsDisabled">
+				<MudRadio Value="false" Color="Color.Success" UncheckedColor="Color.Error">No</MudRadio>
+				<MudRadio Value="true" Color="Color.Success" UncheckedColor="Color.Error">Yes</MudRadio>
+			</MudRadioGroup>
+			@if (_isDetailsDisabled)
+			{
+				<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="EditProduct">Edit</MudButton>
+			}
+			else
+			{
+				<MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@UpdateProduct">Save</MudButton>
+				<MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="ml-2" OnClick="@CancelEdit">Cancel</MudButton>
+			}
+		}
+		else
+		{
+			<MudText>No customer selected. Click on a row to view details.</MudText>
+		}
+		<div class="d-flex">
+			<MudSpacer />
+			<MudButton Class="mt-3" ButtonType="ButtonType.Button" Variant="Variant.Filled"
+			Color="Color.Secondary" OnClick="@ClearSelection">Clear Selection</MudButton>
+			<MudButton Class="mt-3" ButtonType="ButtonType.Button" Variant="Variant.Filled"
+			Color="Color.Error" OnClick="@DeleteProduct" Disabled="@_isDeleteDisabled">Delete product</MudButton>
+		</div>
+	</MudExpansionPanel>
+</MudExpansionPanels>
+
+<MudTable T="Product" Items="@ProductsList" Hover="true" @ref="mudTable" RowClass="cursor-pointer" OnRowClick="RowClickEvent">
+	<ToolBarContent>
+		<MudText Typo="Typo.h6">Products</MudText>
+		<MudSpacer />
+		<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Medium" OnClick="OpenAddNewProductPage">Add New Product</MudButton>
+		<MudButton Disabled=@_processing Variant="Variant.Filled" Size="Size.Medium" OnClick="SearchProductById">
+			@if (_processing)
+			{
+				<MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+				<MudText Class="ms-2">Processing</MudText>
+			}
+			else
+			{
+				<MudText>Search product by id</MudText>
+			}
+		</MudButton>
+		<MudTextField @bind-value="_searchProductId"
+		Adornment="Adornment.Start"
+		AdornmentIcon="@Icons.Material.Filled.Search"
+		IconSize="Size.Medium"
+		Class="mt-0">
+		</MudTextField>
+	</ToolBarContent>
+	<HeaderContent>
+		<MudTh>ID</MudTh>
+		<MudTh>Name</MudTh>
+		<MudTh>Description</MudTh>
+		<MudTh>Price</MudTh>
+		<MudTh>Category</MudTh>
+		<MudTh>In stock?</MudTh>
+		<MudTh>Add To Cart</MudTh>
+	</HeaderContent>
+	<RowTemplate>
+		<MudTd DataLabel="Id">@context.Id</MudTd>
+		<MudTd DataLabel="Name">@context.ProductName</MudTd>
+		<MudTd DataLabel="Description">@context.ProductDescription</MudTd>
+		<MudTd DataLabel="Price">@context.Price</MudTd>
+		<MudTd DataLabel="Category">@context.CategoryName</MudTd>
+		<MudTd DataLabel="In stock?">@context.InStock</MudTd>
+		<MudTd DataLabel="Add To Cart">
+			<MudPopover Open="@(_showPopover && _popoverProductId == context.Id)"
+			Fixed="true"
+			Class="px-4 pt-4">
+				<div style="max-width: 200px;">
+					<MudText Color="Color.Error">@_popoverMessage</MudText>
+					<MudButton Size="Size.Small"
+					Color="Color.Primary"
+					OnClick="ClosePopover"
+					Class="mt-2">
+						OK
+					</MudButton>
+				</div>
+			</MudPopover>
+			<MudIconButton Icon="@Icons.Material.Filled.AddShoppingCart" Color="Color.Success" OnClick="@(() => AddToCart(context))"></MudIconButton>
+		</MudTd>
+	</RowTemplate>
+	<PagerContent>
+		<MudTablePager />
+	</PagerContent>
+</MudTable>
+<MudCard>
+	<MudCardHeader>
+		<CardHeaderContent>
+			<MudText Typo="Typo.h6">Shopping cart</MudText>
+		</CardHeaderContent>
+	</MudCardHeader>
+	<MudCardContent>
+		<MudText Style="font-weight: bold;">Who is shopping?</MudText>
+		<MudSelect @bind-Value="Customer.Id">
+			@foreach (var customer in AllCustomers)
+			{
+				<MudSelectItem Value="customer.Id">@customer.FirstName @customer.LastName</MudSelectItem>
+			}
+		</MudSelect>
+		@foreach (var product in Shoppingcart)
+		{
+			<MudCard>
+				<MudCardContent>
+					<MudText>@product.ProductName</MudText>
+					<MudButtonGroup>
+						<MudIconButton Color="Color.Success" Icon="@Icons.Material.Filled.AddCircle" OnClick="@(() => IncreaseQuantity(product))"></MudIconButton>
+						<MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.RemoveCircle" OnClick="@(() => DecreaseQuantity(product))"></MudIconButton>
+					</MudButtonGroup>
+					<MudText Style="font-weight: bold;">Quantity @product.Quantity</MudText>
+					<MudText Style="font-weight: bold;">Price @product.Price.ToString("C")</MudText>
+					<MudText Style="font-weight: bold;">Subtotal @((product.Price * product.Quantity).ToString("C"))</MudText>
+				</MudCardContent>
+			</MudCard>
+		}
+		@if (Shoppingcart.Any())
+		{
+			<MudDivider Class="my-3" />
+			<MudText Typo="Typo.h6">Total: @(Shoppingcart.Sum(item => item.Price * item.Quantity).ToString("C"))</MudText>
+			<MudButton Style="background-color: yellow; width: 100px;" OnClick="Buy">Buy</MudButton>
+		}
+	</MudCardContent>
+</MudCard>
+
+<style>
+	.window-style {
+	backdrop-filter: blur(10px);
+	}
+</style>
+
+@code {
+
+
+	private MudTable<Product> mudTable;
+
+	public List<Product> ProductsList { get; set; } = new List<Product>();
+	public List<Category> Categories { get; set; } = new List<Category>();
+	public List<ShoppingcartItem> Shoppingcart { get; set; } = new List<ShoppingcartItem>();
+	public List<Customer> AllCustomers { get; set; } = new List<Customer>();
+
+	private Product _selectedProduct = null;
+	private Product _originalProduct = null;
+
+	public Customer Customer { get; set; } = new Customer();
+
+	private int _searchProductId;
+	private int _popoverProductId = 0;
+
+	private bool _isDetailsDisabled = true;
+	private bool _processing = false;
+	private bool _isDeleteDisabled = true;
+	private bool _showPopover = false;
+
+	private string _errorMessage = string.Empty;
+	private string _successMessage = string.Empty;
+	private string _popoverMessage = string.Empty;
+
+	protected override async Task OnInitializedAsync()
+	{
+		ProductsList = await ProductService.GetAllProductsAsync();
+		Categories = await CategoryService.GetAllCategoriesAsync();
+		AllCustomers = await CustomerService.GetCustomersAsync();
+	}
+
+	private void RowClickEvent(TableRowClickEventArgs<Product> tableRowClickEventArgs)
+	{
+		if (!_isDetailsDisabled)
+		{
+			CancelEdit();
+		}
+
+		if (_originalProduct != null)
+		{
+			_selectedProduct = new Product
+				{
+					Id = _originalProduct.Id,
+					ProductName = _originalProduct.ProductName,
+					ProductDescription = _originalProduct.ProductDescription,
+					Price = _originalProduct.Price,
+					CategoryId = _originalProduct.CategoryId,
+					CategoryName = _originalProduct.CategoryName,
+					InStock = _originalProduct.InStock
+				};
+		}
+		_selectedProduct = tableRowClickEventArgs.Item;
+		_isDetailsDisabled = true;
+		_isDeleteDisabled = false;
+		StateHasChanged();
+	}
+
+	private async Task SearchProductById()
+	{
+		_errorMessage = string.Empty;
+
+		try
+		{
+			if (_searchProductId == 0)
+			{
+				ProductsList = await ProductService.GetAllProductsAsync();
+			}
+			else
+			{
+				var (product, errorMessage) = await ProductService.GetProductByIdAsync(_searchProductId);
+
+				if (!string.IsNullOrEmpty(errorMessage))
+				{
+					_errorMessage = errorMessage;
+				}
+				else if (product != null)
+				{
+					ProductsList.Clear();
+					ProductsList.Add(product);
+				}
+				else
+				{
+					ProductsList.Clear();
+					_errorMessage = $"No product with product number {_searchProductId} was found";
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+
+			_errorMessage = $"An error occurred: {ex.Message}";
+		}
+		finally
+		{
+			_processing = false;
+		}
+	}
+
+	private async Task OpenAddNewProductPage()
+	{
+		var options = new DialogOptions { CloseOnEscapeKey = true, BackgroundClass = "window-style" };
+
+		var dialog = await DialogService.ShowAsync<AddNewProductPage>("Add New Product", options);
+
+		var result = await dialog.Result;
+
+		if (!result.Canceled && result.Data is Product newProduct)
+		{
+			ProductsList.Add(newProduct);
+			StateHasChanged();
+		}
+
+	}
+
+	private void EditProduct()
+	{
+		_isDetailsDisabled = false;
+
+		_originalProduct = new Product
+			{
+				Id = _selectedProduct.Id,
+				ProductName = _selectedProduct.ProductName,
+				ProductDescription = _selectedProduct.ProductDescription,
+				Price = _selectedProduct.Price,
+				CategoryId = _selectedProduct.CategoryId,
+				CategoryName = _selectedProduct.CategoryName,
+				InStock = _selectedProduct.InStock
+			};
+	}
+
+	private async Task UpdateProduct()
+	{
+		_errorMessage = string.Empty;
+		_successMessage = string.Empty;
+
+		var productToUpdate = new ProductToUpdate
+			{
+				ProductName = _selectedProduct.ProductName,
+				ProductDescription = _selectedProduct.ProductDescription,
+				Price = _selectedProduct.Price,
+				CategoryId = _selectedProduct.CategoryId,
+				InStock = _selectedProduct.InStock
+			};
+
+		try
+		{
+			var result = await ProductService.UpdateProductAsync(_selectedProduct.Id, productToUpdate);
+			if (result.success)
+			{
+				_successMessage = $"Product with id {_selectedProduct.Id} was updated.";
+				_isDetailsDisabled = true;
+
+			}
+			else
+			{
+				// Parse the error message if it's in JSON format
+				try
+				{
+					if (result.message.StartsWith("{") && result.message.Contains("errors"))
+					{
+						// Parse the JSON error response
+						var errorJson = System.Text.Json.JsonDocument.Parse(result.message);
+
+						if (errorJson.RootElement.TryGetProperty("errors", out var errorsElement))
+						{
+							// Build a readable error message
+							var errorMessages = new List<string>();
+
+							foreach (var errorProp in errorsElement.EnumerateObject())
+							{
+								string fieldName = errorProp.Name;
+								var errorArray = errorProp.Value.EnumerateArray();
+
+								// Add each error message
+								foreach (var error in errorArray)
+								{
+									errorMessages.Add(error.GetString());
+								}
+							}
+
+							// Join all error messages with line breaks
+							_errorMessage = string.Join("\n", errorMessages);
+						}
+						else
+						{
+							_errorMessage = result.message;
+						}
+					}
+					else
+					{
+						_errorMessage = result.message;
+					}
+				}
+				catch
+				{
+					// If parsing fails, use the original message
+					_errorMessage = result.message;
+				}
+			}
+		}
+		catch (Exception)
+		{
+
+			_errorMessage = "An error occurred.";
+		}
+	}
+
+	private async Task CancelEdit()
+	{
+		if (_originalProduct != null && _selectedProduct != null)
+		{
+			_selectedProduct.Id = _originalProduct.Id;
+			_selectedProduct.ProductName = _originalProduct.ProductName;
+			_selectedProduct.ProductDescription = _originalProduct.ProductDescription;
+			_selectedProduct.Price = _originalProduct.Price;
+			_selectedProduct.CategoryId = _originalProduct.CategoryId;
+			_selectedProduct.CategoryName = _originalProduct.CategoryName;
+			_selectedProduct.InStock = _originalProduct.InStock;
+		}
+
+		StateHasChanged();
+
+		_isDetailsDisabled = true;
+		_errorMessage = string.Empty;
+	}
+
+	private void ClearSelection()
+	{
+		CancelEdit();
+		_selectedProduct = null;
+		_isDeleteDisabled = true;
+		StateHasChanged();
+	}
+
+	private async Task DeleteProduct()
+	{
+		_errorMessage = string.Empty;
+		_successMessage = string.Empty;
+
+		try
+		{
+			var result = await ProductService.DeleteProductAsync(_selectedProduct.Id);
+			if (result.success)
+			{
+				_successMessage = result.message;
+				ProductsList = await ProductService.GetAllProductsAsync();
+				_selectedProduct = null;
+			}
+			else
+			{
+				_errorMessage = result.message;
+			}
+		}
+		catch (Exception)
+		{
+
+			throw;
+		}
+	}
+
+	private void AddToCart(Product product)
+	{
+		_errorMessage = string.Empty;
+		_successMessage = string.Empty;
+
+		if (product == null)
+		{
+			_errorMessage = "Product was not found";
+			return;
+		}
+
+		if (product.InStock == false)
+		{
+			_popoverMessage = $"{product.ProductName} is not in stock, can not be added to cart";
+			_popoverProductId = product.Id;
+			_showPopover = true;
+			StateHasChanged();
+
+		}
+		else if (product.InStock == true)
+		{
+			var existingItem = Shoppingcart.FirstOrDefault(item => item.Id == product.Id);
+
+			if (existingItem != null)
+			{
+				existingItem.Quantity++;
+				Snackbar.Add("Increasing quantity", Severity.Success);
+			}
+			else
+			{
+				var newItem = new ShoppingcartItem
+					{
+						Id = product.Id,
+						ProductName = product.ProductName,
+						Price = product.Price,
+						Quantity = 1
+
+					};
+				Shoppingcart.Add(newItem);
+				Snackbar.Add($"{product.ProductName} was added to cart", Severity.Success);
+			}
+		}
+	}
+
+	private void IncreaseQuantity(ShoppingcartItem item)
+	{
+		item.Quantity++;
+		StateHasChanged();
+	}
+
+	private void DecreaseQuantity(ShoppingcartItem item)
+	{
+		if (item.Quantity > 1)
+		{
+			item.Quantity--;
+		}
+		else
+		{
+			Shoppingcart.Remove(item);
+		}
+
+		StateHasChanged();
+	}
+
+	private async Task Buy()
+	{
+		try
+		{
+			if (Customer.Id == 0)
+			{
+				Snackbar.Add("Choose a customer", Severity.Warning);
+				return;
+			}
+
+			var createOrder = new CreateOrder
+				{
+					CustomerId = Customer.Id,
+					OrderProducts = Shoppingcart.Select(item => new CreateOrderProduct
+					{
+						ProductId = item.Id,
+						Quantity = item.Quantity
+					}).ToList()
+				};
+
+
+			var result = await OrderService.CreateOrder(createOrder);
+
+			if (result.success)
+			{
+				Snackbar.Add($"Order placed! Your order number is {result.order.Id}", Severity.Success);
+				Shoppingcart.Clear();
+				Customer = new Customer();
+				StateHasChanged();
+			}
+			else
+			{
+				_errorMessage = result.message;
+			}
+
+		}
+		catch (Exception ex)
+		{
+
+			_errorMessage = $"An error occurred while placing order: {ex.Message}";
+		}
+	}
+
+	private void ClosePopover()
+	{
+		_showPopover = false;
+		_popoverProductId = 0;
+		_popoverMessage = string.Empty;
+		StateHasChanged();
+	}
+}

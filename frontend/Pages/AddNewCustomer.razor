@@ -1,0 +1,113 @@
+﻿@using frontend.Interfaces
+@using frontend.Models
+@inject ICustomerService CustomerService
+
+<MudDialog Style="width: 600px;">
+	<TitleContent>
+		Add new customer
+	</TitleContent>
+	<DialogContent>
+		@if (!string.IsNullOrEmpty(_message))
+		{
+			<MudAlert Severity="Severity.Error" Class="mt-2">
+				@foreach (var line in _message.Split('\n'))
+				{
+					<div>@line</div>
+				}
+			</MudAlert>
+		}
+		<MudTextField ShrinkLabel @bind-Value="CustomerToCreate.FirstName" Label="First name" Variant="Variant.Text" Counter="50" MaxLength="50" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="CustomerToCreate.LastName" Label="Last name" Variant="Variant.Text" Counter="50" MaxLength="50" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="CustomerToCreate.Email" Label="Email" Variant="Variant.Text" Counter="150" MaxLength="150" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="CustomerToCreate.PhoneNumber" Label="Phone number" Variant="Variant.Text" Counter="10" MaxLength="10" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="CustomerToCreate.StreetName" Label="Street name" Variant="Variant.Text" Counter="50" MaxLength="50" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="CustomerToCreate.ZipCode" Label="Zip code" Variant="Variant.Text" Counter="50" MaxLength="50" Immediate="true"></MudTextField>
+		<MudTextField ShrinkLabel @bind-Value="CustomerToCreate.City" Label="City" Variant="Variant.Text" Counter="50" MaxLength="50" Immediate="true"></MudTextField>
+	</DialogContent>
+	<DialogActions>
+		<MudButton OnClick="Cancel">Cancel</MudButton>
+		<MudButton Color="Color.Primary" OnClick="SaveNewCustomer">Ok</MudButton>
+	</DialogActions>
+</MudDialog>
+@code {
+	[CascadingParameter]
+	private IMudDialogInstance MudDialog { get; set; }
+
+	public CustomerForCreation CustomerToCreate { get; set; } = new CustomerForCreation();
+
+	private string _message;
+
+	protected override void OnInitialized()
+	{
+		base.OnInitialized();
+
+	}
+
+	private async Task SaveNewCustomer()
+	{
+		try
+		{
+			var result = await CustomerService.CreateCustomerAsync(CustomerToCreate);
+			if (result.success)
+			{
+				MudDialog.Close(DialogResult.Ok(result.customer));
+			}
+			else
+			{
+				// Parse the error message if it's in JSON format
+				try
+				{
+					if (result.message.StartsWith("{") && result.message.Contains("errors"))
+					{
+						// Parse the JSON error response
+						var errorJson = System.Text.Json.JsonDocument.Parse(result.message);
+
+						if (errorJson.RootElement.TryGetProperty("errors", out var errorsElement))
+						{
+							// Build a readable error message
+							var errorMessages = new List<string>();
+
+							foreach (var errorProp in errorsElement.EnumerateObject())
+							{
+								string fieldName = errorProp.Name;
+								var errorArray = errorProp.Value.EnumerateArray();
+
+								// Add each error message
+								foreach (var error in errorArray)
+								{
+									errorMessages.Add(error.GetString());
+								}
+							}
+
+							// Join all error messages with line breaks
+							_message = string.Join("\n", errorMessages);
+						}
+						else
+						{
+							_message = result.message;
+						}
+					}
+					else
+					{
+						_message = result.message;
+					}
+				}
+				catch
+				{
+					// If parsing fails, use the original message
+					_message = result.message;
+				}
+
+				StateHasChanged();
+			}
+		}
+		catch (Exception ex)
+		{
+
+			_message = $"There was an error: {ex.Message}";
+		}
+	}
+
+
+	private void Cancel() => MudDialog.Cancel();
+}

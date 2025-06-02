@@ -1,0 +1,173 @@
+﻿@page "/orders"
+@using frontend.Interfaces
+@using frontend.Models
+@inject IOrderService OrderService
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+	<MudAlert Severity="Severity.Error" Class="my-2" Dense="true">@_errorMessage</MudAlert>
+}
+
+<MudText Class="mt-4">See all orders here!</MudText>
+<MudTextField @bind-value="_searchOrderId"
+Adornment="Adornment.Start"
+AdornmentIcon="@Icons.Material.Filled.Search"
+IconSize="Size.Medium"
+Class="mt-0">
+</MudTextField>
+<MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SearchOrderById">Search</MudButton>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4">
+	<MudCard>
+		<MudCardHeader>
+			<CardHeaderContent>
+				<MudText Typo="Typo.h6">Orders</MudText>
+			</CardHeaderContent>
+		</MudCardHeader>
+		<MudCardContent Class="p-0">
+			<MudTable Items="FilteredOrders"
+			Hover="true"
+			Dense="true"
+			Breakpoint="Breakpoint.Sm"
+			MultiSelection="false">
+				<HeaderContent>
+					<MudTh>Order#</MudTh>
+					<MudTh>Customer</MudTh>
+					<MudTh>Actions</MudTh>
+				</HeaderContent>
+				<RowTemplate>
+					<MudTd DataLabel="Order#">
+						<div>
+							<MudText Typo="Typo.body2">@context.Id</MudText>
+						</div>
+					</MudTd>
+					<MudTd DataLabel="Customer">
+						<div>
+							<MudText Typo="Typo.body2">@context.CustomerFirstName @context.CustomerLastName</MudText>
+							<MudText Typo="Typo.caption" Color="Color.Secondary">ID: @context.CustomerId</MudText>
+						</div>
+					</MudTd>
+					<MudTd DataLabel="Actions">
+						<MudButton StartIcon="Icons.Material.Filled.ExpandMore"
+						Size="Size.Small"
+						Variant="Variant.Text"
+						OnClick="() => ToggleOrderExpansion(context.Id)">
+							@(_expandedOrder.Contains(context.Id) ? "Collapse" : "View Details")
+						</MudButton>
+					</MudTd>
+				</RowTemplate>
+				<ChildRowContent>
+					@if (_expandedOrder.Contains(context.Id))
+					{
+						<MudTr>
+							<td colspan="6" class="pa-0">
+								<MudCollapse Expanded="true">
+									<div class="pa-4" style="background-color: var(--mud-palette-background-grey);">
+										<MudText Typo="Typo.h6">Order details - Order @context.Id</MudText>
+										<MudText Typo="Typo.subtitle2">Products in this order:</MudText>
+										<MudSimpleTable Dense="true" Hover="true">
+											<thead>
+												<tr>
+													<th>Product name</th>
+													<th>Product description</th>
+													<th>Price</th>
+													<th>Quantity</th>
+												</tr>
+											</thead>
+											<tbody>
+												@foreach (var product in context.ProductsForOrder)
+												{
+													<tr>
+														<td>
+															<MudText Typo="Typo.body2">@product.ProductName</MudText>
+														</td>
+														<td>
+															<MudText Typo="Typo.body2">@product.ProductDescription</MudText>
+														</td>
+														<td>
+															<MudText Typo="Typo.body2">@product.Price</MudText>
+														</td>
+														<td>
+															<MudText Typo="Typo.body2">@product.Quantity</MudText>
+														</td>
+													</tr>
+												}
+											</tbody>
+										</MudSimpleTable>
+
+									</div>
+								</MudCollapse>
+							</td>
+						</MudTr>
+					}
+				</ChildRowContent>
+			</MudTable>
+		</MudCardContent>
+	</MudCard>
+</MudContainer>
+
+@code {
+
+	public List<Order> AllOrders { get; set; } = new List<Order>();
+	public List<Order> FilteredOrders { get; set; } = new List<Order>();
+
+	private HashSet<int> _expandedOrder = new();
+
+	private int _searchOrderId;
+	private string _errorMessage = string.Empty;
+
+	protected override async Task OnInitializedAsync()
+	{
+		AllOrders = await OrderService.GetAllOrdersAsync();
+		FilteredOrders = new List<Order>(AllOrders);
+	}
+
+	private void ToggleOrderExpansion(int orderId)
+	{
+		if (_expandedOrder.Contains(orderId))
+		{
+			_expandedOrder.Remove(orderId);
+		}
+		else
+		{
+			_expandedOrder.Add(orderId);
+		}
+	}
+
+	private async Task SearchOrderById()
+	{
+
+		if (_searchOrderId == 0)
+		{
+			FilteredOrders = AllOrders;
+			_errorMessage = string.Empty;
+		}
+		else
+		{
+			try
+			{
+				var(order, errorMessage) = await OrderService.SearchOrderByIdAsync(_searchOrderId);
+
+				if (!string.IsNullOrEmpty(errorMessage))
+				{
+					_errorMessage = errorMessage;
+				}
+				else if (order != null)
+				{
+					FilteredOrders.Clear();
+					FilteredOrders.Add(order);
+				}
+				else
+				{
+					FilteredOrders.Clear();
+					_errorMessage = $"No order with order number {_searchOrderId} was found";
+				}
+			}
+			catch (Exception ex)
+			{
+
+				_errorMessage = $"An error occurred: {ex.Message}";
+			}
+		}
+	}
+}

@@ -1,0 +1,347 @@
+﻿@page "/customers"
+@using System.Collections.Generic
+@using frontend.Models
+@using frontend.Interfaces
+@inject ICustomerService CustomerService
+@inject IDialogService DialogService
+
+
+@if (!string.IsNullOrEmpty(_messageError))
+{
+	<MudAlert Severity="Severity.Error" Class="my-2" Dense="true">@_messageError</MudAlert>
+}
+@if (!string.IsNullOrEmpty(_messageSuccess))
+{
+	<MudAlert Severity="Severity.Success" Class="my-2" Dense="true">@_messageSuccess</MudAlert>
+}
+@if (CustomersList == null)
+{
+	<p><em>Loading...</em></p>
+}
+else
+{
+	<MudExpansionPanels Style="flex: 1;">
+		<MudExpansionPanel Text="Selected Customer Details:">
+			@if (_selectedCustomer != null)
+			{
+				<MudTextField Label="First name" @bind-Value="_selectedCustomer.FirstName" Disabled="@_isDetailsDisabled"></MudTextField>
+				<MudTextField Label="Last name" @bind-Value="_selectedCustomer.LastName" Disabled="@_isDetailsDisabled">@_selectedCustomer.LastName</MudTextField>
+				<MudTextField Label="Email" @bind-Value="_selectedCustomer.Email" Disabled="@_isDetailsDisabled">@_selectedCustomer.Email</MudTextField>
+				<MudTextField Label="Phone number" @bind-Value="_selectedCustomer.PhoneNumber" Disabled="@_isDetailsDisabled" Counter="10" MaxLength="10" Immediate="true">@_selectedCustomer.PhoneNumber</MudTextField>
+				<MudTextField Label="Street name" @bind-Value="_selectedCustomer.StreetName" Disabled="@_isDetailsDisabled">@_selectedCustomer.StreetName</MudTextField>
+				<MudTextField Label="Zip code" @bind-Value="_selectedCustomer.ZipCode" Disabled="@_isDetailsDisabled">@_selectedCustomer.ZipCode</MudTextField>
+				<MudTextField Label="City" @bind-Value="_selectedCustomer.City" Disabled="@_isDetailsDisabled">@_selectedCustomer.City</MudTextField>
+				@if (_isDetailsDisabled)
+				{
+					<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="EditCustomer">Edit</MudButton>
+				}
+				else
+				{
+					<MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@UpdateCustomer">Save</MudButton>
+					<MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="ml-2" OnClick="@CancelEdit">Cancel</MudButton>
+				}
+
+
+
+			}
+			else
+			{
+				<MudText>No customer selected. Click on a row to view details.</MudText>
+			}
+			<div class="d-flex">
+				<MudSpacer />
+				<MudButton Class="mt-3" ButtonType="ButtonType.Button" Variant="Variant.Filled"
+				Color="Color.Secondary" OnClick="@ClearSelection">Clear Selection</MudButton>
+			</div>
+		</MudExpansionPanel>
+	</MudExpansionPanels>
+
+
+	<MudTable T="Customer" Items="@CustomersList" Hover="true" @ref="mudTable" RowClass="cursor-pointer" OnRowClick="RowClickEvent">
+		<ToolBarContent>
+			<MudText Typo="Typo.h6">Customers</MudText>
+			<MudSpacer />
+			<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Medium" OnClick="OpenAddNewCustomerAsync">Add New Customer</MudButton>
+			<MudButton Disabled=@_processing Variant="Variant.Filled" Size="Size.Medium" OnClick="SearchCustomerByEmail">
+				@if (_processing)
+				{
+					<MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+					<MudText Class="ms-2">Processing</MudText>
+				}
+				else
+				{
+					<MudText>Search</MudText>
+				}
+			</MudButton>
+			<MudTextField @bind-value="searchEmail"
+			Placeholder="Search customer by email" Adornment="Adornment.Start"
+			AdornmentIcon="@Icons.Material.Filled.Search"
+			IconSize="Size.Medium"
+			Class="mt-0">
+			</MudTextField>
+		</ToolBarContent>
+		<HeaderContent>
+			<MudTh>ID</MudTh>
+			<MudTh>First name</MudTh>
+			<MudTh>Last name</MudTh>
+			<MudTh>Email</MudTh>
+			<MudTh>Phone number</MudTh>
+			<MudTh>Streetname</MudTh>
+			<MudTh>Zip code</MudTh>
+			<MudTh>City</MudTh>
+		</HeaderContent>
+		<RowTemplate>
+			<MudTd DataLabel="Id">@context.Id</MudTd>
+			<MudTd DataLabel="First name">@context.FirstName</MudTd>
+			<MudTd DataLabel="Last name">@context.LastName</MudTd>
+			<MudTd DataLabel="Email">@context.Email</MudTd>
+			<MudTd DataLabel="Phone number">@context.PhoneNumber</MudTd>
+			<MudTd DataLabel="Street name">@context.StreetName</MudTd>
+			<MudTd DataLabel="Zip code">@context.ZipCode</MudTd>
+			<MudTd DataLabel="City">@context.City</MudTd>
+		</RowTemplate>
+		<PagerContent>
+			<MudTablePager />
+		</PagerContent>
+	</MudTable>
+
+	<style>
+		.window-style {
+		backdrop-filter: blur(10px);
+		}
+	</style>
+
+}
+
+@code {
+
+	private MudTable<Customer> mudTable;
+
+	private string searchEmail;
+	private string _messageError;
+	private string _messageSuccess;
+
+	private bool _processing = false;
+	private bool _isDetailsDisabled = true;
+
+	private Customer _selectedCustomer = null;
+	private Customer _originalCustomer = null;
+
+	public List<Customer> CustomersList { get; set; } = new List<Customer>();
+
+
+	protected override async Task OnInitializedAsync()
+	{
+		CustomersList = await CustomerService.GetCustomersAsync();
+	}
+
+	private void RowClickEvent(TableRowClickEventArgs<Customer> tableRowClickEventArgs)
+	{
+		if (!_isDetailsDisabled)
+		{
+			CancelEdit();
+		}
+
+		if (_originalCustomer != null)
+		{
+			_selectedCustomer = new Customer
+				{
+					Id = _originalCustomer.Id,
+					FirstName = _originalCustomer.FirstName,
+					LastName = _originalCustomer.LastName,
+					Email = _originalCustomer.Email,
+					PhoneNumber = _originalCustomer.PhoneNumber,
+					StreetName = _originalCustomer.StreetName,
+					ZipCode = _originalCustomer.ZipCode,
+					City = _originalCustomer.City
+				};
+		}
+		_selectedCustomer = tableRowClickEventArgs.Item;
+		_isDetailsDisabled = true;
+		StateHasChanged();
+	}
+
+	private void ClearSelection()
+	{
+		CancelEdit();
+		_selectedCustomer = null;
+		StateHasChanged();
+	}
+
+	private async Task SearchCustomerByEmail()
+	{
+		_messageError = string.Empty;
+		_messageSuccess = string.Empty;
+		_processing = true;
+
+		try
+		{
+			if (string.IsNullOrWhiteSpace(searchEmail))
+			{
+				CustomersList = await CustomerService.GetCustomersAsync();
+			}
+			else
+			{
+				var (customer, errorMessage) = await CustomerService.GetCustomerByEmailAsync(searchEmail);
+
+				if (!string.IsNullOrEmpty(errorMessage))
+				{
+					_messageError = errorMessage;
+				}
+				else if (customer != null)
+				{
+					CustomersList.Clear();
+					CustomersList.Add(customer);
+				}
+				else
+				{
+					CustomersList.Clear();
+					StateHasChanged();
+					_messageError = $"No customers found with email: {searchEmail}";
+				}
+			}
+
+		}
+		catch (Exception ex)
+		{
+
+			_messageError = $"An error occured: {ex.Message}";
+		}
+		finally
+		{
+			_processing = false;
+		}
+
+	}
+
+	private async Task OpenAddNewCustomerAsync()
+	{
+		var options = new DialogOptions { CloseOnEscapeKey = true, BackgroundClass = "window-style" };
+
+		var dialog = await DialogService.ShowAsync<AddNewCustomer>("Add New Customer", options);
+
+		var result = await dialog.Result;
+
+		if (!result.Canceled && result.Data is Customer newCustomer)
+		{
+			CustomersList.Add(newCustomer);
+			StateHasChanged();
+		}
+	}
+
+	private void EditCustomer()
+	{
+		_isDetailsDisabled = false;
+
+		_originalCustomer = new Customer
+			{
+				Id = _selectedCustomer.Id,
+				FirstName = _selectedCustomer.FirstName,
+				LastName = _selectedCustomer.LastName,
+				Email = _selectedCustomer.Email,
+				PhoneNumber = _selectedCustomer.PhoneNumber,
+				StreetName = _selectedCustomer.StreetName,
+				ZipCode = _selectedCustomer.ZipCode,
+				City = _selectedCustomer.City
+			};
+	}
+
+	private async Task UpdateCustomer()
+	{
+		_messageError = string.Empty;
+		_messageSuccess = string.Empty;
+
+		var customerToUpdate = new CustomerToUpdate
+			{
+				FirstName = _selectedCustomer.FirstName,
+				LastName = _selectedCustomer.LastName,
+				Email = _selectedCustomer.Email,
+				PhoneNumber = _selectedCustomer.PhoneNumber,
+				StreetName = _selectedCustomer.StreetName,
+				ZipCode = _selectedCustomer.ZipCode,
+				City = _selectedCustomer.City
+			};
+
+
+		try
+		{
+			var result = await CustomerService.UpdateCustomerAsync(_selectedCustomer.Id, customerToUpdate);
+			if (result.success)
+			{
+				_messageSuccess = $"Customer with id {_selectedCustomer.Id} was updated.";
+				_isDetailsDisabled = true;
+			}
+			else
+			{
+				// Parse the error message if it's in JSON format
+				try
+				{
+					if (result.message.StartsWith("{") && result.message.Contains("errors"))
+					{
+						// Parse the JSON error response
+						var errorJson = System.Text.Json.JsonDocument.Parse(result.message);
+
+						if (errorJson.RootElement.TryGetProperty("errors", out var errorsElement))
+						{
+							// Build a readable error message
+							var errorMessages = new List<string>();
+
+							foreach (var errorProp in errorsElement.EnumerateObject())
+							{
+								string fieldName = errorProp.Name;
+								var errorArray = errorProp.Value.EnumerateArray();
+
+								// Add each error message
+								foreach (var error in errorArray)
+								{
+									errorMessages.Add(error.GetString());
+								}
+							}
+
+							// Join all error messages with line breaks
+							_messageError = string.Join("\n", errorMessages);
+						}
+						else
+						{
+							_messageError = result.message;
+						}
+					}
+					else
+					{
+						_messageError = result.message;
+					}
+				}
+				catch
+				{
+					// If parsing fails, use the original message
+					_messageError = result.message;
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+
+			_messageError = $"Error: {ex}";
+		}
+	}
+
+	private async Task CancelEdit()
+	{
+		if (_originalCustomer != null && _selectedCustomer != null)
+		{
+			_selectedCustomer.Id = _originalCustomer.Id;
+			_selectedCustomer.FirstName = _originalCustomer.FirstName;
+			_selectedCustomer.LastName = _originalCustomer.LastName;
+			_selectedCustomer.Email = _originalCustomer.Email;
+			_selectedCustomer.PhoneNumber = _originalCustomer.PhoneNumber;
+			_selectedCustomer.StreetName = _originalCustomer.StreetName;
+			_selectedCustomer.ZipCode = _originalCustomer.ZipCode;
+			_selectedCustomer.City = _originalCustomer.City;
+		}
+
+		StateHasChanged();
+
+		_isDetailsDisabled = true;
+		_messageError = string.Empty;
+	}
+}
